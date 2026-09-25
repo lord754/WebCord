@@ -1,0 +1,16 @@
+{
+  "name": "WebCord Repo",
+  "identifier": "io.github.lord754.webcord.repo",
+  "apps": [
+    {
+      "name": "WebCord",
+      "bundleIdentifier": "com.hammerandchisel.discord",
+      "developerName": "lord754",
+      "subtitle": "Discord, your way.",
+      "localizedDescription": "WebCord is a client modification for Discord on iOS. Install plugins, themes, and more.",
+      "iconURL": "https://avatars.githubusercontent.com/u/159218871",
+      "tintColor": "5865F2",
+      "versions": []
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+Package: io.github.lord754.webcord
+Name: WebCord
+Version: 2.0.1
+Architecture: iphoneos-arm
+Description: A mod for Discord's mobile apps. Discord, your way.
+Maintainer: lord754
+Author: lord754
+Icon: https://avatars.githubusercontent.com/u/159218871
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000)
+Conflicts: app.enmity, mod.vendetta, app.bunny, io.github.revenge-mod.app
