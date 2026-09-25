@@ -117,6 +117,8 @@ jobs:
     name: Build IPA
     runs-on: macos-14
     needs: build-tweak
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
