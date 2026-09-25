@@ -47,7 +47,8 @@ static BOOL isSelfCall(void) {
 - (NSDictionary *)infoDictionary {
     if (!isSelfCall()) return %orig;
     
-    NSMutableDictionary *info = [%orig mutableCopy];
+    NSDictionary *origDict = %orig;
+    NSMutableDictionary *info = [origDict mutableCopy];
     info[@"CFBundleIdentifier"] = DISCORD_BUNDLE_ID;
     info[@"CFBundleDisplayName"] = DISCORD_NAME;
     info[@"CFBundleName"] = DISCORD_NAME;
@@ -66,7 +67,7 @@ static BOOL isSelfCall(void) {
 
 %hook NSFileManager
 - (NSURL *)containerURLForSecurityApplicationGroupIdentifier:(NSString *)groupIdentifier {
-    BunnyLog(@"containerURLForSecurityApplicationGroupIdentifier called! %@", groupIdentifier ?: @"nil");
+    RevengeLog(@"containerURLForSecurityApplicationGroupIdentifier called! %@", groupIdentifier ?: @"nil");
     
     NSArray *paths = [self URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask];
     NSURL *lastPath = [paths lastObject];
