@@ -1,21 +1,27 @@
 name: Build & Release WebCord IPA
-run-name: ${{ github.event.inputs.release == 'true' && '🚀 Release' || '🔨 Build' }} — Discord ${{ github.event.inputs.ipa_url }}
+run-name: ${{ github.event.inputs.release == 'true' && '🚀 Release' || '🔨 Build' }} — WebCord IPA
 
 on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: "Direct link to decrypted Discord IPA (get from decrypt.day or similar)"
-        required: true
+        description: "Direct link to decrypted Discord IPA (leave blank to reuse cached IPA)"
+        required: false
         type: string
+        default: ""
       release:
         description: "Publish as a GitHub Release?"
         required: true
         type: boolean
         default: false
+  schedule:
+    # Auto-check for new Discord version every day at midnight UTC
+    - cron: "0 0 * * *"
 
 env:
   GH_TOKEN: ${{ github.token }}
+  DISCORD_APP_ID: "985746746"
+  DISCORD_BUNDLE_ID: "com.hammerandchisel.discord"
 
 jobs:
   # ─────────────────────────────────────────────
@@ -121,8 +127,42 @@ jobs:
         with:
           merge-multiple: true
 
-      - name: Download Discord IPA
-        run: curl -L -o discord.ipa "${{ github.event.inputs.ipa_url }}"
+      - name: Get Discord IPA
+        run: |
+          # If user provided a URL, use it and cache it for future runs
+          if [ -n "${{ github.event.inputs.ipa_url }}" ]; then
+            echo "Downloading IPA from provided URL..."
+            curl -L -o discord.ipa "${{ github.event.inputs.ipa_url }}"
+            echo "IPA_SOURCE=provided" >> $GITHUB_ENV
+
+          else
+            echo "No URL provided — checking for cached IPA in releases..."
+            # Try to get cached IPA from the 'ipa-cache' release tag
+            CACHED=$(gh api repos/${{ github.repository }}/releases/tags/ipa-cache \
+              --jq '.assets[] | select(.name == "discord.ipa") | .browser_download_url' 2>/dev/null || echo "")
+
+            if [ -n "$CACHED" ]; then
+              echo "Found cached IPA, downloading..."
+              curl -L -o discord.ipa "$CACHED"
+              echo "IPA_SOURCE=cache" >> $GITHUB_ENV
+            else
+              echo "❌ No IPA URL provided and no cached IPA found."
+              echo "Please run this workflow manually with a Discord IPA URL from https://decrypt.day"
+              echo "Once you do this once, the IPA will be cached automatically for future runs."
+              exit 1
+            fi
+          fi
+
+      - name: Cache IPA for future runs
+        if: env.IPA_SOURCE == 'provided'
+        run: |
+          echo "Uploading IPA to ipa-cache release tag for future use..."
+          # Delete old cache release if exists
+          gh release delete ipa-cache --yes 2>/dev/null || true
+          gh release create ipa-cache discord.ipa \
+            --title "IPA Cache (do not delete)" \
+            --notes "Auto-cached Discord IPA for WebCord builds. Delete this release to force a fresh IPA next build." \
+            --prerelease
 
       - name: Download IPA icons
         run: |
