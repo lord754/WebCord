@@ -73,7 +73,7 @@ jobs:
 
       - name: Setup Theos
         if: env.DEB_DOWNLOADED == 'false'
-        uses: Randomblock1/theos-action@v1
+        uses: Randomblock1/theos-action@v1.5
 
       - name: Set GNU Make path
         run: echo "PATH=$(brew --prefix make)/libexec/gnubin:$PATH" >> $GITHUB_ENV
