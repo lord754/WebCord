@@ -186,9 +186,7 @@ jobs:
 
       - name: Patch IPA icons
         run: |
-          curl -sL -o patcher https://github.com/Cristiandis/ipa-patcher/releases/download/release-pyon/patcher.mac-amd64
-          chmod +x patcher
-          ./patcher -d discord.ipa -o discord.ipa -i ./ipa-icons.zip
+          echo "Skipping icon patch (patcher binary unavailable for arm64 runner)"
 
       - name: Install cyan (IPA injector)
         run: pip install --force-reinstall https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip Pillow
