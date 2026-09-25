@@ -1,0 +1,261 @@
+name: Build & Release WebCord IPA
+run-name: ${{ github.event.inputs.release == 'true' && '🚀 Release' || '🔨 Build' }} — Discord ${{ github.event.inputs.ipa_url }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: "Direct link to decrypted Discord IPA (get from decrypt.day or similar)"
+        required: true
+        type: string
+      release:
+        description: "Publish as a GitHub Release?"
+        required: true
+        type: boolean
+        default: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Build the .deb tweak with Theos
+  # ─────────────────────────────────────────────
+  build-tweak:
+    name: Build Tweak (.deb)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Check if pre-built .deb exists in latest release
+        id: check-deb
+        run: |
+          set +e
+          release_info=$(gh api --header 'Accept: application/vnd.github+json' repos/${{ github.repository }}/releases/latest 2>/dev/null)
+          status_code=$(echo "$release_info" | jq -r '.status // empty')
+
+          if [ -n "$status_code" ]; then
+            echo "No release found or API error. Will build from source."
+            echo "DEB_DOWNLOADED=false" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          set -e
+          release_version=$(echo "$release_info" | jq -r '.assets[] | select(.name | contains("iphoneos-arm.deb")) | .name' | grep -o '_[0-9.]*_' | tr -d '_' | head -1)
+          control_version=$(grep '^Version:' tweak/control | cut -d ' ' -f 2)
+
+          if [ "$release_version" = "$control_version" ]; then
+            echo "Release .deb matches control version ($control_version). Downloading..."
+            echo "$release_info" | jq -r '.assets[] | select(.name | endswith(".deb")) | .browser_download_url' | xargs -I {} curl -sL -O {}
+            echo "DEB_DOWNLOADED=true" >> $GITHUB_ENV
+          else
+            echo "Version mismatch (release=$release_version, control=$control_version). Building from source."
+            echo "DEB_DOWNLOADED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Cache Theos
+        if: env.DEB_DOWNLOADED == 'false'
+        id: theos-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/theos
+          key: ${{ runner.os }}-theos-${{ hashFiles('tweak/Makefile') }}
+
+      - name: Setup Theos
+        if: env.DEB_DOWNLOADED == 'false'
+        uses: Randomblock1/theos-action@v1
+
+      - name: Set GNU Make path
+        run: echo "PATH=$(brew --prefix make)/libexec/gnubin:$PATH" >> $GITHUB_ENV
+
+      - name: Build rootful package
+        if: env.DEB_DOWNLOADED == 'false'
+        working-directory: tweak
+        run: make package FINALPACKAGE=1
+
+      - name: Build rootless package
+        if: env.DEB_DOWNLOADED == 'false'
+        working-directory: tweak
+        run: make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+
+      - name: Set .deb paths
+        run: |
+          if [ "${{ env.DEB_DOWNLOADED }}" == "true" ]; then
+            echo "DEB_PATH=${{ github.workspace }}/*iphoneos-arm.deb" >> $GITHUB_ENV
+            echo "ROOTLESS_DEB_PATH=${{ github.workspace }}/*iphoneos-arm64.deb" >> $GITHUB_ENV
+          else
+            echo "DEB_PATH=${{ github.workspace }}/tweak/packages/*iphoneos-arm.deb" >> $GITHUB_ENV
+            echo "ROOTLESS_DEB_PATH=${{ github.workspace }}/tweak/packages/*iphoneos-arm64.deb" >> $GITHUB_ENV
+          fi
+
+      - name: Upload rootful .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-rootful
+          path: ${{ env.DEB_PATH }}
+
+      - name: Upload rootless .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-rootless
+          path: ${{ env.ROOTLESS_DEB_PATH }}
+
+  # ─────────────────────────────────────────────
+  # 2. Inject tweak into Discord IPA
+  # ─────────────────────────────────────────────
+  build-ipa:
+    name: Build IPA
+    runs-on: macos-14
+    needs: build-tweak
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download .deb artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Download Discord IPA
+        run: curl -L -o discord.ipa "${{ github.event.inputs.ipa_url }}"
+
+      - name: Download IPA icons
+        run: curl -sL -o ipa-icons.zip https://raw.githubusercontent.com/pyoncord/assets/main/ipa-icons.zip
+
+      - name: Extract control values
+        run: |
+          NAME=$(grep '^Name:' tweak/control | cut -d ' ' -f 2)
+          PACKAGE=$(grep '^Package:' tweak/control | cut -d ' ' -f 2)
+          VERSION=$(grep '^Version:' tweak/control | cut -d ' ' -f 2)
+          echo "APP_NAME=$NAME" >> $GITHUB_ENV
+          echo "DEB_FILE_NAME=${PACKAGE}_${VERSION}_iphoneos-arm.deb" >> $GITHUB_ENV
+          echo "ROOTLESS_DEB_FILE_NAME=${PACKAGE}_${VERSION}_iphoneos-arm64.deb" >> $GITHUB_ENV
+
+      - name: Patch IPA icons
+        run: |
+          curl -sL -o patcher https://github.com/Cristiandis/ipa-patcher/releases/download/release-pyon/patcher.mac-amd64
+          chmod +x patcher
+          ./patcher -d discord.ipa -o discord.ipa -i ./ipa-icons.zip
+
+      - name: Install cyan (IPA injector)
+        run: pip install --force-reinstall https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip Pillow
+
+      - name: Inject WebCord tweak into IPA
+        run: |
+          cyan -duws -i discord.ipa -o "${{ github.workspace }}/${{ env.APP_NAME }}.ipa" \
+            -f "${{ github.workspace }}/${{ env.DEB_FILE_NAME }}"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipa
+          path: ${{ github.workspace }}/${{ env.APP_NAME }}.ipa
+
+  # ─────────────────────────────────────────────
+  # 3. Publish GitHub Release (optional)
+  # ─────────────────────────────────────────────
+  release:
+    name: Publish Release
+    if: ${{ github.event.inputs.release == 'true' }}
+    runs-on: macos-14
+    needs: build-ipa
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract control values
+        run: |
+          NAME=$(grep '^Name:' tweak/control | cut -d ' ' -f 2)
+          PACKAGE=$(grep '^Package:' tweak/control | cut -d ' ' -f 2)
+          VERSION=$(grep '^Version:' tweak/control | cut -d ' ' -f 2)
+          echo "APP_NAME=$NAME" >> $GITHUB_ENV
+          echo "DEB_FILE_NAME=${PACKAGE}_${VERSION}_iphoneos-arm.deb" >> $GITHUB_ENV
+          echo "ROOTLESS_DEB_FILE_NAME=${PACKAGE}_${VERSION}_iphoneos-arm64.deb" >> $GITHUB_ENV
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Get Discord version from IPA
+        run: |
+          unzip -q "${{ env.APP_NAME }}.ipa" -d ipa_extracted
+          DISCORD_VERSION=$(plutil -p ipa_extracted/Payload/Discord.app/Info.plist | grep CFBundleShortVersionString | cut -d '"' -f 4)
+          echo "DISCORD_VERSION=$DISCORD_VERSION" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.DISCORD_VERSION }}
+          name: "WebCord v${{ env.DISCORD_VERSION }}"
+          body: |
+            ## WebCord for Discord ${{ env.DISCORD_VERSION }}
+
+            ### Install options
+            - **Sideload (no jailbreak):** Use [AltStore](https://altstore.io), [Sideloadly](https://sideloadly.io), or [TrollStore](https://github.com/opa334/TrollStore) with the `.ipa` file
+            - **Jailbreak (rootful):** Install `${{ env.DEB_FILE_NAME }}`
+            - **Jailbreak (rootless):** Install `${{ env.ROOTLESS_DEB_FILE_NAME }}`
+
+            ### What is WebCord?
+            WebCord is a client modification for Discord on iOS — install plugins, themes, and more.
+          files: |
+            ${{ env.DEB_FILE_NAME }}
+            ${{ env.ROOTLESS_DEB_FILE_NAME }}
+            ${{ env.APP_NAME }}.ipa
+          generate_release_notes: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─────────────────────────────────────────────
+  # 4. Update app-repo.json after release
+  # ─────────────────────────────────────────────
+  update-repo:
+    name: Update App Repo
+    if: ${{ github.event.inputs.release == 'true' }}
+    runs-on: macos-14
+    needs: release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download IPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ipa
+
+      - name: Get app name
+        run: |
+          NAME=$(grep '^Name:' tweak/control | cut -d ' ' -f 2)
+          echo "APP_NAME=$NAME" >> $GITHUB_ENV
+
+      - name: Update app-repo.json
+        run: |
+          unzip -q "${{ env.APP_NAME }}.ipa" -d ipa_extracted
+          VERSION=$(plutil -p ipa_extracted/Payload/Discord.app/Info.plist | grep CFBundleShortVersionString | cut -d '"' -f 4)
+          DATE=$(date -u +"%Y-%m-%d")
+          IPA_SIZE=$(wc -c < "${{ env.APP_NAME }}.ipa" | tr -d ' ')
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${{ env.APP_NAME }}.ipa"
+          NEW_ENTRY=$(jq -n \
+            --arg version "$VERSION" \
+            --arg date "$DATE" \
+            --argjson size "$IPA_SIZE" \
+            --arg downloadURL "$DOWNLOAD_URL" \
+            '{version: $version, date: $date, size: $size, downloadURL: $downloadURL}')
+          jq --argjson newEntry "$NEW_ENTRY" '.apps[0].versions |= [$newEntry] + .' tweak/app-repo.json > temp.json
+          mv temp.json tweak/app-repo.json
+
+      - uses: EndBug/add-and-commit@v9
+        with:
+          default_author: github_actions
+          message: "chore: update app-repo.json for v${{ env.DISCORD_VERSION }}"
+          add: tweak/app-repo.json
