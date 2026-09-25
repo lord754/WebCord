@@ -125,7 +125,13 @@ jobs:
         run: curl -L -o discord.ipa "${{ github.event.inputs.ipa_url }}"
 
       - name: Download IPA icons
-        run: curl -sL -o ipa-icons.zip https://raw.githubusercontent.com/pyoncord/assets/main/ipa-icons.zip
+        run: |
+          # Use the Discord blurple logo as the app icon
+          mkdir -p ipa-icons/AppIcon.appiconset
+          curl -sL -o ipa-icons/AppIcon.appiconset/icon.png \
+            "https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png"
+          # Fallback: also grab the pyoncord icon pack as base
+          curl -sL -o ipa-icons.zip https://raw.githubusercontent.com/pyoncord/assets/main/ipa-icons.zip
 
       - name: Extract control values
         run: |

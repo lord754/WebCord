@@ -5,7 +5,7 @@ Architecture: iphoneos-arm
 Description: A mod for Discord's mobile apps. Discord, your way.
 Maintainer: lord754
 Author: lord754
-Icon: https://avatars.githubusercontent.com/u/159218871
+Icon: https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png
 Section: Tweaks
 Depends: mobilesubstrate (>= 0.9.5000)
 Conflicts: app.enmity, mod.vendetta, app.bunny, io.github.revenge-mod.app
