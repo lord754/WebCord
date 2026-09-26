@@ -141,11 +141,11 @@ static LoaderConfig *loaderConfig;
         NSString *install_prefix = @"/var/jb";
         isJailbroken = [[NSFileManager defaultManager] fileExistsAtPath:install_prefix];
 
-        NSString *bundlePath = [NSString stringWithFormat:@"%@/Library/Application Support/RevengeResources.bundle", install_prefix];
+        NSString *bundlePath = [NSString stringWithFormat:@"%@/Library/Application Support/WebCordResources.bundle", install_prefix];
         RevengeLog(@"Is jailbroken: %d", isJailbroken);
         RevengeLog(@"Bundle path for jailbroken: %@", bundlePath);
 
-        NSString *jailedPath = [[NSBundle mainBundle].bundleURL.path stringByAppendingPathComponent:@"RevengeResources.bundle"];
+        NSString *jailedPath = [[NSBundle mainBundle].bundleURL.path stringByAppendingPathComponent:@"WebCordResources.bundle"];
         RevengeLog(@"Bundle path for jailed: %@", jailedPath);
 
         revengePatchesBundlePath = isJailbroken ? bundlePath : jailedPath;
