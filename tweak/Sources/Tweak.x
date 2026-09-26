@@ -19,21 +19,12 @@ static LoaderConfig *loaderConfig;
         return %orig;
     }
 
-    NSBundle *revengePatchesBundle = [NSBundle bundleWithPath:revengePatchesBundlePath];
-    if (!revengePatchesBundle) {
-        RevengeLog(@"Failed to load RevengePatches bundle from path: %@", revengePatchesBundlePath);
-        showErrorAlert(@"Loader Error", @"Failed to initialize mod loader. Please reinstall the tweak.");
-        return %orig;
-    }
-
-    NSURL *patchPath = [revengePatchesBundle URLForResource:@"payload-base" withExtension:@"js"];
-    if (!patchPath) {
-        RevengeLog(@"Failed to find payload-base.js in bundle");
-        showErrorAlert(@"Loader Error", @"Failed to initialize mod loader. Please reinstall the tweak.");
-        return %orig;
-    }
-
-    NSData *patchData = [NSData dataWithContentsOfURL:patchPath];
+    // Inline payload - loads Revenge bundle from GitHub at runtime
+    NSString *payloadJS = @"globalThis.__PYON_LOADER__ = { loaderName: \"WebCord\", loaderVersion: PACKAGE_VERSION, hasThemeSupport: true, storedTheme: null, fontPatch: 2 };"
+        "(async () => { try { const res = await fetch(\"https://github.com/revenge-mod/revenge-bundle/releases/latest/download/revenge.min.js\"); "
+        "if (!res.ok) throw new Error(\"HTTP \" + res.status); const js = await res.text(); (0, eval)(js); } "
+        "catch (e) { console.error(\"[WebCord] Failed to load bundle:\", e); } })();";
+    NSData *patchData = [payloadJS dataUsingEncoding:NSUTF8StringEncoding];
     RevengeLog(@"Injecting loader");
     %orig(patchData, source, YES);
 
