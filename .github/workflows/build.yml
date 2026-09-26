@@ -134,7 +134,7 @@ jobs:
           # If user provided a URL, use it and cache it for future runs
           if [ -n "${{ github.event.inputs.ipa_url }}" ]; then
             echo "Downloading IPA from provided URL..."
-            curl -L -o discord.ipa "${{ github.event.inputs.ipa_url }}"
+            curl -L -H "Authorization: token ${{ github.token }}" -o discord.ipa "${{ github.event.inputs.ipa_url }}"
             echo "IPA_SOURCE=provided" >> $GITHUB_ENV
 
           else
