@@ -134,7 +134,15 @@ jobs:
           # If user provided a URL, use it and cache it for future runs
           if [ -n "${{ github.event.inputs.ipa_url }}" ]; then
             echo "Downloading IPA from provided URL..."
-            curl -L -H "Authorization: token ${{ github.token }}" -o discord.ipa "${{ github.event.inputs.ipa_url }}"
+            # Use gh if it's a GitHub release URL, otherwise use curl
+            if echo "${{ github.event.inputs.ipa_url }}" | grep -q "github.com/.*/releases/download/"; then
+              REPO=$(echo "${{ github.event.inputs.ipa_url }}" | sed 's|https://github.com/\([^/]*/[^/]*\)/.*|\1|')
+              TAG=$(echo "${{ github.event.inputs.ipa_url }}" | sed 's|.*/releases/download/\([^/]*\)/.*|\1|')
+              FILENAME=$(echo "${{ github.event.inputs.ipa_url }}" | sed 's|.*/||')
+              gh release download "$TAG" --repo "$REPO" --pattern "$FILENAME" --output discord.ipa
+            else
+              curl -L -o discord.ipa "${{ github.event.inputs.ipa_url }}"
+            fi
             echo "IPA_SOURCE=provided" >> $GITHUB_ENV
 
           else
